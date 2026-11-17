@@ -1,0 +1,20 @@
+From: コールデータバンク <notice@call.omnidatabank.jp>
+To: info@example.co.jp
+Subject: 【コールデータバンク】入電通知
+Date: Tue, 17 Nov 2026 13:40:00 +0900
+Message-ID: <b3_aoi.eml@sample>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+計測番号：0800-765-4321
+発信者番号：070-7777-8888
+入電日時：2026/11/17 13:39:10
+アカウント名：あおい総合研究所
+キャンペーン名：草刈り_茨城
+観測点名：茨城県
+コンバージョントリガ名：着信
+通話時間（秒）：8
+通話切断理由：着信側切断
+入電ID：CDB-778900
+PV数：1

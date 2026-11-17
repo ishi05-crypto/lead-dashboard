@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案件ダッシュボード</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --surface-2: #f0f2f5; --border: #dfe3e8;
+  --ink: #1b1f24; --ink-2: #4a525c; --ink-3: #737c87; --accent: #2f6fdb;
+  --crit: #c4321f; --crit-bg: #fdecea; --warn: #9a6700; --warn-bg: #fff4d6;
+  --good: #1f7a3d; --good-bg: #e6f4ea; --muted-bg: #eceef1;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171b; --surface: #1c2026; --surface-2: #232830; --border: #313843;
+    --ink: #e8ebef; --ink-2: #b4bcc6; --ink-3: #8a939e; --accent: #6ea0ff;
+    --crit: #ff8a7a; --crit-bg: #3a1d1a; --warn: #f0c35a; --warn-bg: #352b12;
+    --good: #6fd08f; --good-bg: #16301f; --muted-bg: #262b33;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.5 "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif; }
+header { padding: 16px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 18px; margin: 0; }
+.updated { color: var(--ink-3); font-size: 12px; }
+main { padding: 0 16px 32px; max-width: 1600px; margin: 0 auto; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
+  cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.tile.active { outline: 2px solid var(--accent); }
+.tile .label { color: var(--ink-2); font-size: 12px; }
+.tile .num { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .sub { color: var(--ink-3); font-size: 12px; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+.filters select, .filters input { background: var(--surface); color: var(--ink); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 8px; font: inherit; }
+.filters input[type=search] { flex: 1 1 220px; min-width: 0; }
+
+.table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 9px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+th { font-size: 12px; color: var(--ink-2); font-weight: 600; background: var(--surface-2); white-space: nowrap; position: sticky; top: 0; }
+tr.lead { cursor: pointer; }
+tr.lead:hover td { background: var(--surface-2); }
+tr.done td { color: var(--ink-3); }
+td.name { font-weight: 600; }
+td .kana { display: block; font-weight: 400; color: var(--ink-3); font-size: 12px; }
+td.clip { max-width: 220px; }
+.small { font-size: 12px; color: var(--ink-3); }
+a { color: var(--accent); }
+.tel { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.badge { display: inline-flex; gap: 4px; align-items: center; border-radius: 999px; padding: 1px 8px;
+  font-size: 12px; white-space: nowrap; background: var(--muted-bg); color: var(--ink-2); }
+.badge.crit { background: var(--crit-bg); color: var(--crit); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+.badge.good { background: var(--good-bg); color: var(--good); }
+.src { display: inline-block; font-size: 11px; color: var(--ink-3); }
+.flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+
+select.status { font: inherit; font-size: 12px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--ink); padding: 3px 4px; }
+
+tr.detail td { background: var(--surface-2); }
+.detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.detail-grid h3 { font-size: 13px; margin: 0 0 6px; color: var(--ink-2); }
+.kv { display: grid; grid-template-columns: 9em minmax(0, 1fr); gap: 2px 10px; font-size: 13px; }
+.kv dt { color: var(--ink-3); }
+.kv dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+textarea { width: 100%; min-height: 70px; font: inherit; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px; }
+button.save { margin-top: 6px; font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--accent);
+  background: var(--accent); color: #fff; cursor: pointer; }
+td.recv { white-space: nowrap; }
+.elapsed { font-variant-numeric: tabular-nums; line-height: 1.2; }
+.elapsed .h { font-size: 22px; font-weight: 700; }
+.elapsed .u { font-size: 12px; color: var(--ink-2); margin-left: 2px; }
+.elapsed.alert .h, .elapsed.alert .u { color: var(--crit); }
+.elapsed .tag { display: block; font-size: 11px; color: var(--crit); }
+.empty { padding: 40px; text-align: center; color: var(--ink-3); }
+
+/* スマホ: カード表示 */
+@media (max-width: 760px) {
+  thead { display: none; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  tr.lead { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  tr.lead td { border: none; padding: 2px 0; max-width: none; }
+  tr.lead td[data-l]::before { content: attr(data-l) "："; color: var(--ink-3); font-size: 12px; font-weight: 400; }
+  .detail-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>案件ダッシュボード</h1>
+  <span class="updated" id="updated"></span>
+</header>
+<main>
+  <section class="tiles" id="tiles"></section>
+
+  <div class="filters">
+    <select id="f-days" aria-label="期間">
+      <option value="1">今日〜24時間</option>
+      <option value="7" selected>直近7日</option>
+      <option value="30">直近30日</option>
+      <option value="">全期間</option>
+    </select>
+    <select id="f-source" aria-label="送客元"><option value="">すべての送客元</option></select>
+    <select id="f-status" aria-label="ステータス"><option value="">すべてのステータス</option></select>
+    <select id="f-sort" aria-label="並び順">
+      <option value="deadline">連絡期限が近い順</option>
+      <option value="elapsed">経過時間が長い順（未対応優先）</option>
+      <option value="received">受信が新しい順</option>
+    </select>
+    <input type="search" id="f-q" placeholder="氏名・電話・エリア・案件番号で検索">
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>受信日時・経過</th><th>連絡期限</th><th>顧客氏名</th><th>電話番号</th><th>エリア</th>
+        <th>作業種別</th><th>規模・本数</th><th>希望日時</th><th>送客元</th><th>状態</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const CLOSED = new Set(["完了", "対象外"]);
+let state = { leads: [], statuses: [], sources: {}, open: new Set(), tile: "", soonH: 24, alertH: 24 };
+
+function minutesLeft(l) {
+  if (!l.deadline_iso) return null;
+  return Math.round((new Date(l.deadline_iso) - Date.now()) / 60000);
+}
+function fmtRel(m) {
+  const a = Math.abs(m), h = Math.floor(a / 60), mm = a % 60;
+  const t = h >= 24 ? `${Math.floor(h / 24)}日${h % 24}時間` : h ? `${h}時間${mm}分` : `${mm}分`;
+  return m < 0 ? `${t}超過` : `あと${t}`;
+}
+function urgency(l) {
+  if (CLOSED.has(l.status)) return "closed";
+  const m = minutesLeft(l);
+  if (m === null) return "none";
+  if (m < 0) return "over";
+  if (m <= state.soonH * 60) return "soon";
+  return "ok";
+}
+function deadlineCell(l) {
+  if (!l.contact_deadline) return '<span class="small">期限なし<br>（希望日時の記載なし）</span>';
+  const u = urgency(l), m = minutesLeft(l);
+  let badge = "";
+  if (u === "over") badge = `<span class="badge crit">⚠ ${fmtRel(m)}</span>`;
+  else if (u === "soon") badge = `<span class="badge warn">⏱ ${fmtRel(m)}</span>`;
+  else if (u === "ok") badge = `<span class="badge">${fmtRel(m)}</span>`;
+  return `${badge}<div class="small">${esc(l.contact_deadline)}<br>（${esc(l.deadline_basis)}）</div>`;
+}
+
+// 受信日時（DB は日本時間で保存）と、そこからの経過時間
+function receivedDate(l) { return l.received_at ? new Date(l.received_at.slice(0, 16) + ":00+09:00") : null; }
+function elapsedMin(l) { const d = receivedDate(l); return d ? Math.max(0, Math.floor((Date.now() - d) / 60000)) : null; }
+const fmtJST = (d) => d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric",
+                                                    weekday: "short", hour: "2-digit", minute: "2-digit" });
+function receivedCell(l) {
+  const m = elapsedMin(l);
+  if (m === null) return "—";
+  const h = Math.floor(m / 60), alert = l.status === "未対応" && h >= state.alertH;
+  const days = h >= 24 ? `<span class="small">（${Math.floor(h / 24)}日${h % 24}時間）</span>` : "";
+  return `<div class="elapsed ${alert ? "alert" : ""}" title="受信から ${h}時間${m % 60}分">
+      <span class="h">${h}</span><span class="u">時間${m % 60}分 経過</span>${days}
+      ${alert ? `<span class="tag">⚠ 未対応のまま${state.alertH}時間超</span>` : ""}</div>
+    <div class="small">${fmtJST(receivedDate(l))} 受信</div>`;
+}
+
+async function load() {
+  const p = new URLSearchParams({ days: $("#f-days").value, source: $("#f-source").value,
+                                  status: $("#f-status").value, q: $("#f-q").value });
+  const res = await fetch("/api/leads?" + p);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    $("#rows").innerHTML = `<tr><td colspan="10" class="empty">${esc(data.error || "読み込みに失敗しました")}（${res.status}）</td></tr>`;
+    return;
+  }
+  if (!state.statuses.length) {
+    for (const s of data.statuses) $("#f-status").insertAdjacentHTML("beforeend", `<option>${esc(s)}</option>`);
+    for (const [k, v] of Object.entries(data.sources))
+      $("#f-source").insertAdjacentHTML("beforeend", `<option value="${esc(k)}">${esc(k)} ${esc(v)}</option>`);
+  }
+  Object.assign(state, { leads: data.leads, statuses: data.statuses, sources: data.sources,
+                         soonH: data.deadline_soon_hours, alertH: data.elapsed_alert_hours });
+  $("#updated").textContent = "最終更新 " + new Date().toLocaleTimeString("ja-JP");
+  render();
+}
+
+function renderTiles() {
+  const L = state.leads;
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }); // YYYY-MM-DD（日本時間）
+  const open = L.filter((l) => !CLOSED.has(l.status));
+  const tiles = [
+    { key: "", label: "表示中の案件", num: L.length, sub: `うち本日受信 ${L.filter((l) => (l.received_at || "").startsWith(today)).length}件` },
+    { key: "unhandled", label: "未対応", num: L.filter((l) => l.status === "未対応").length, sub: "まだ連絡していない案件" },
+    { key: "over", label: "⚠ 連絡期限 超過", num: open.filter((l) => urgency(l) === "over").length, sub: "完了・対象外を除く" },
+    { key: "soon", label: `⏱ ${state.soonH}時間以内に期限`, num: open.filter((l) => urgency(l) === "soon").length, sub: "すぐに連絡が必要" },
+    { key: "stale", label: "未対応の最長経過",
+      num: (() => { const ms = L.filter((l) => l.status === "未対応").map(elapsedMin).filter((x) => x !== null);
+                    return ms.length ? `${Math.floor(Math.max(...ms) / 60)}<small style="font-size:14px">時間</small>` : "—"; })(),
+      sub: `${state.alertH}時間超の未対応 ${L.filter((l) => l.status === "未対応" && elapsedMin(l) >= state.alertH * 60).length}件` },
+  ];
+  $("#tiles").innerHTML = tiles.map((t) =>
+    `<button class="tile ${state.tile === t.key ? "active" : ""}" data-tile="${t.key}">
+       <div class="label">${t.label}</div><div class="num">${t.num}</div><div class="sub">${t.sub}</div></button>`).join("");
+}
+
+function sorted(list) {
+  const rank = { over: 0, soon: 1, ok: 2, none: 3, closed: 4 };
+  const arr = [...list];
+  if ($("#f-sort").value === "elapsed")
+    arr.sort((a, b) => (CLOSED.has(a.status) - CLOSED.has(b.status)) || (a.received_at || "").localeCompare(b.received_at || ""));
+  if ($("#f-sort").value === "deadline")
+    arr.sort((a, b) => rank[urgency(a)] - rank[urgency(b)] || (a.deadline_iso || "9").localeCompare(b.deadline_iso || "9") || (b.received_at || "").localeCompare(a.received_at || ""));
+  return arr;
+}
+
+function detailHtml(l) {
+  const kv = (pairs) => `<dl class="kv">${pairs.filter(([, v]) => v).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+  const raw = Object.entries(l.fields || {});
+  return `<div class="detail-grid">
+    <div>
+      <h3>案件情報</h3>
+      ${kv([["案件番号", l.case_no], ["送客元", `${l.source_code} ${l.source_label}`], ["送客元詳細", l.source_detail],
+            ["宛先ブランド", l.brand], ["契約区分", l.contract_type], ["問合せ日時", l.inquired_at],
+            ["受信日時", (l.received_at || "").replace("T", " ")], ["電話番号2", l.phone2], ["メール", l.email],
+            ["住所", l.address], ["件名", l.subject], ["備考", l.note]])}
+      ${l.detail_url ? `<p><a href="${esc(l.detail_url)}" target="_blank" rel="noopener">詳細ページを開く ↗</a></p>` : ""}
+      <h3>対応メモ</h3>
+      <textarea data-memo="${l.id}">${esc(l.memo)}</textarea>
+      <button class="save" data-save="${l.id}">メモを保存</button>
+    </div>
+    <div>
+      <h3>メールから抽出した全項目</h3>
+      ${raw.length ? kv(raw) : '<p class="small">項目なし</p>'}
+    </div>
+  </div>`;
+}
+
+function render() {
+  renderTiles();
+  let list = state.leads;
+  if (state.tile === "unhandled") list = list.filter((l) => l.status === "未対応");
+  if (state.tile === "stale") list = list.filter((l) => l.status === "未対応" && elapsedMin(l) >= state.alertH * 60);
+  if (state.tile === "over" || state.tile === "soon") list = list.filter((l) => urgency(l) === state.tile);
+  list = sorted(list);
+  if (!list.length) { $("#rows").innerHTML = `<tr><td colspan="10" class="empty">該当する案件はありません</td></tr>`; return; }
+  $("#rows").innerHTML = list.map((l) => {
+    const flags = (l.flags || []).map((f) => `<span class="badge ${/超過|エリア外|判別/.test(f) ? "warn" : ""}">${esc(f)}</span>`).join("");
+    const contract = l.contract_type && l.contract_type !== "通常" ? `<span class="badge warn">${esc(l.contract_type)}</span>` : "";
+    const opts = state.statuses.map((s) => `<option ${s === l.status ? "selected" : ""}>${esc(s)}</option>`).join("");
+    const tel = l.phone ? `<a class="tel" href="tel:${esc(l.phone.replace(/[^\d+]/g, ""))}">${esc(l.phone)}</a>` : '<span class="small">—</span>';
+    const row = `<tr class="lead ${CLOSED.has(l.status) ? "done" : ""}" data-id="${l.id}">
+      <td class="recv" data-l="受信・経過">${receivedCell(l)}</td>
+      <td data-l="連絡期限">${deadlineCell(l)}</td>
+      <td class="name" data-l="顧客氏名">${esc(l.customer_name) || '<span class="small">（未取得）</span>'}${l.customer_kana ? `<span class="kana">${esc(l.customer_kana)}</span>` : ""}
+        ${flags || contract ? `<div class="flags">${contract}${flags}</div>` : ""}</td>
+      <td data-l="電話番号">${tel}</td>
+      <td data-l="エリア">${esc(l.area) || "—"}</td>
+      <td class="clip" data-l="作業種別">${esc(l.work_type) || "—"}</td>
+      <td class="clip" data-l="規模・本数">${esc(l.scale) || "—"}</td>
+      <td class="clip" data-l="希望日時">${esc(l.desired_at) || "—"}</td>
+      <td data-l="送客元">${esc(l.source_label)}<br><span class="src">${esc(l.source_code)}${l.case_no ? " · " + esc(l.case_no) : ""}</span></td>
+      <td data-l="状態"><select class="status" data-status="${l.id}" aria-label="状態">${opts}</select></td>
+    </tr>`;
+    return row + (state.open.has(l.id) ? `<tr class="detail"><td colspan="10">${detailHtml(l)}</td></tr>` : "");
+  }).join("");
+}
+
+async function post(id, body) {
+  await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: +id, ...body }) });
+}
+
+document.addEventListener("click", async (e) => {
+  const tile = e.target.closest("[data-tile]");
+  if (tile) { state.tile = state.tile === tile.dataset.tile ? "" : tile.dataset.tile; return render(); }
+  const save = e.target.closest("[data-save]");
+  if (save) { await post(save.dataset.save, { memo: document.querySelector(`[data-memo="${save.dataset.save}"]`).value }); save.textContent = "保存しました"; return load(); }
+  if (e.target.closest("a, select, textarea, button")) return;
+  const row = e.target.closest("tr.lead");
+  if (row) { const id = +row.dataset.id; state.open.has(id) ? state.open.delete(id) : state.open.add(id); render(); }
+});
+document.addEventListener("change", async (e) => {
+  if (e.target.dataset.status) { await post(e.target.dataset.status, { status: e.target.value }); return load(); }
+  if (e.target.id === "f-sort") return render();
+  if (e.target.closest(".filters")) load();
+});
+let t; $("#f-q").addEventListener("input", () => { clearTimeout(t); t = setTimeout(load, 300); });
+
+load();
+// 1分ごとに自動更新（メモ入力中はスキップ）
+setInterval(() => { if (document.activeElement?.tagName !== "TEXTAREA") load(); }, 60000);
+</script>
+</body>
+</html>
