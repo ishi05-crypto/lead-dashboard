@@ -1,3 +1,13 @@
+# 静的デモ版：Vercel には public/（画面と demo-data.json）だけを配信する。
+# 実メール取り込み版（api/ + データベース）を公開するときは、下の「静的デモ用」の行を消す。
 leads.db
 tests
 docs/*.png
+
+# --- 静的デモ用 ---
+api
+mail_dashboard
+manage.py
+samples
+requirements.txt
+pyproject.toml

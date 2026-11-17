@@ -5,6 +5,7 @@
   python manage.py imap [--watch 120]          IMAP から取り込む（環境変数で接続設定）
   python manage.py reparse                     保存済みメールを再解析
   python manage.py serve [--port 8000]         ダッシュボードを起動
+  python manage.py export-demo                 静的デモ用データを public/demo-data.json に書き出す
 """
 import argparse
 import glob
@@ -12,7 +13,7 @@ import os
 import sys
 import time
 
-from mail_dashboard import db, mailio, server
+from mail_dashboard import db, demo, mailio, server
 
 
 def _print_result(name, lead_id, result, lead):
@@ -71,6 +72,11 @@ def main():
 
     p = sp.add_parser("initdb", help="DB のテーブルを作成（DATABASE_URL があれば PostgreSQL）")
     p.set_defaults(func=lambda a: (db.connect(a.db).close(), print("OK")))
+
+    p = sp.add_parser("export-demo", help="サンプルから静的デモ用データ public/demo-data.json を作る")
+    p.add_argument("--samples", default="samples")
+    p.add_argument("--out", default=os.path.join("public", "demo-data.json"))
+    p.set_defaults(func=lambda a: print(f"{demo.export(a.samples, a.out)} 件を {a.out} に書き出しました"))
 
     p = sp.add_parser("serve", help="ダッシュボードを起動")
     p.add_argument("--host", default="127.0.0.1")

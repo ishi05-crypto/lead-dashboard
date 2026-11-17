@@ -81,6 +81,10 @@ td.recv { white-space: nowrap; }
 .elapsed .u { font-size: 12px; color: var(--ink-2); margin-left: 2px; }
 .elapsed.alert .h, .elapsed.alert .u { color: var(--crit); }
 .elapsed .tag { display: block; font-size: 11px; color: var(--crit); }
+.demo-note { flex-basis: 100%; font-size: 13px; color: var(--warn); background: var(--warn-bg);
+  border-radius: 6px; padding: 6px 10px; }
+.demo-reset { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
 .empty { padding: 40px; text-align: center; color: var(--ink-3); }
 
 /* スマホ: カード表示 */
@@ -98,6 +102,8 @@ td.recv { white-space: nowrap; }
 <header>
   <h1>案件ダッシュボード</h1>
   <span class="updated" id="updated"></span>
+  <span class="demo-note" id="demo-note" hidden>デモ版：架空のサンプル案件を表示しています。日時は開いた時刻に合わせて自動でずらしています。ステータスとメモの変更は、このブラウザにだけ保存されます。</span>
+  <button type="button" class="demo-reset" id="demo-reset" hidden>デモを初期状態に戻す</button>
 </header>
 <main>
   <section class="tiles" id="tiles"></section>
@@ -179,11 +185,110 @@ function receivedCell(l) {
     <div class="small">${fmtJST(receivedDate(l))} 受信</div>`;
 }
 
+// ---------------------------------------------------------------- 静的デモモード
+// /api/leads が無い（Vercel で画面だけ公開している）場合は demo-data.json を使う。
+const DEMO = { on: false, raw: null, shiftDays: 0, baseYear: 0 };
+const DEMO_KEY = "lead-dashboard-demo-overrides";
+const WD = "日月火水木金土";
+const pad = (n) => String(n).padStart(2, "0");
+
+function demoOverrides() {
+  try { return JSON.parse(localStorage.getItem(DEMO_KEY) || "{}"); } catch (e) { return {}; }
+}
+function saveDemoOverride(id, body) {
+  const o = demoOverrides();
+  o[id] = Object.assign(o[id] || {}, body);
+  try { localStorage.setItem(DEMO_KEY, JSON.stringify(o)); } catch (e) {}
+}
+// 日本時間の "YYYY-MM-DDTHH:MM" を、日数だけずらして同じ形式で返す
+function shiftIso(s) {
+  if (!s) return s;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(.*)$/);
+  if (!m) return s;
+  const d = new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5]) + DEMO.shiftDays * 864e5);
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}${m[6]}`;
+}
+function shiftYMD(y, mo, d) {
+  return new Date(Date.UTC(y, mo - 1, d) + DEMO.shiftDays * 864e5);
+}
+// 文中の日付（2026/11/17・2026-11-17・2026年11月24日・11/21(土)・11月24日）をずらす
+function shiftText(s) {
+  if (typeof s !== "string" || !s) return s;
+  const wdRe = "(\\s*[(（][日月火水木金土][)）])?";
+  s = s.replace(new RegExp("(\\d{4})([/\\-年])(\\d{1,2})([/\\-月])(\\d{1,2})(日?)" + wdRe, "g"),
+    (all, y, s1, mo, s2, d, nichi, wd) => {
+      const t = shiftYMD(+y, +mo, +d);
+      const two = (n, orig) => (s1 !== "年" && orig.length === 2 ? pad(n) : String(n));
+      return `${t.getUTCFullYear()}${s1}${two(t.getUTCMonth() + 1, mo)}${s2}${two(t.getUTCDate(), d)}${nichi}` +
+             (wd ? wd.replace(/[日月火水木金土]/, WD[t.getUTCDay()]) : "");
+    });
+  s = s.replace(new RegExp("(?<![\\d/年\\-])(\\d{1,2})/(\\d{1,2})(?![\\d/])" + wdRe, "g"), (all, mo, d, wd) => {
+    const t = shiftYMD(DEMO.baseYear, +mo, +d);
+    return `${t.getUTCMonth() + 1}/${t.getUTCDate()}` + (wd ? wd.replace(/[日月火水木金土]/, WD[t.getUTCDay()]) : "");
+  });
+  s = s.replace(new RegExp("(?<![\\d年])(\\d{1,2})月(\\d{1,2})日" + wdRe, "g"), (all, mo, d, wd) => {
+    const t = shiftYMD(DEMO.baseYear, +mo, +d);
+    return `${t.getUTCMonth() + 1}月${t.getUTCDate()}日` + (wd ? wd.replace(/[日月火水木金土]/, WD[t.getUTCDay()]) : "");
+  });
+  return s;
+}
+function demoLead(src) {
+  const l = JSON.parse(JSON.stringify(src));
+  l.received_at = shiftIso(l.received_at);
+  l.inquired_iso = shiftIso(l.inquired_iso);
+  l.deadline_iso = shiftIso(l.deadline_iso);
+  if (l.deadline_iso) l.contact_deadline = l.deadline_iso.slice(0, 16).replace(/-/g, "/").replace("T", " ");
+  for (const k of ["inquired_at", "desired_at", "note", "subject", "memo"]) l[k] = shiftText(l[k]);
+  for (const k of Object.keys(l.fields || {})) l.fields[k] = shiftText(l.fields[k]);
+  Object.assign(l, demoOverrides()[l.id] || {});
+  return l;
+}
+async function demoData(params) {
+  if (!DEMO.raw) {
+    const res = await fetch("demo-data.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("デモ用データ（demo-data.json）が見つかりません");
+    DEMO.raw = await res.json();
+    // いちばん新しいサンプルが「今から24時間以内」に届いたように、日単位でずらす
+    const latest = Math.max(...DEMO.raw.leads.map((l) => new Date(l.received_at + ":00+09:00").getTime()));
+    DEMO.shiftDays = Math.floor((Date.now() - latest) / 864e5);
+    DEMO.baseYear = new Date(latest + 9 * 36e5).getUTCFullYear();
+  }
+  let leads = DEMO.raw.leads.map(demoLead);
+  const days = +params.get("days"), source = params.get("source"), status = params.get("status");
+  const q = (params.get("q") || "").trim();
+  if (days) {
+    const cutoff = new Date(Date.now() - days * 864e5 + 9 * 36e5).toISOString().slice(0, 16);
+    leads = leads.filter((l) => l.received_at >= cutoff);
+  }
+  if (source) leads = leads.filter((l) => l.source_code === source);
+  if (status) leads = leads.filter((l) => l.status === status);
+  if (q) leads = leads.filter((l) => ["customer_name", "phone", "area", "work_type", "case_no", "note", "memo"]
+    .some((k) => (l[k] || "").includes(q)));
+  leads.sort((a, b) => b.received_at.localeCompare(a.received_at));
+  return Object.assign({}, DEMO.raw, { leads });
+}
+async function fetchLeads(params) {
+  if (!DEMO.on) {
+    let res = null;
+    try { res = await fetch("/api/leads?" + params); } catch (e) { res = null; }
+    const isJson = res && (res.headers.get("content-type") || "").includes("application/json");
+    if (res && res.status !== 404 && isJson) {
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok, status: res.status, data };
+    }
+    DEMO.on = true;
+    $("#demo-note").hidden = false;
+    $("#demo-reset").hidden = false;
+  }
+  try { return { ok: true, status: 200, data: await demoData(params) }; }
+  catch (e) { return { ok: false, status: 0, data: { error: e.message } }; }
+}
+
 async function load() {
   const p = new URLSearchParams({ days: $("#f-days").value, source: $("#f-source").value,
                                   status: $("#f-status").value, q: $("#f-q").value });
-  const res = await fetch("/api/leads?" + p);
-  const data = await res.json().catch(() => ({}));
+  const { ok, status, data } = await fetchLeads(p);
+  const res = { ok, status };
   if (!res.ok) {
     $("#rows").innerHTML = `<tr><td colspan="10" class="empty">${esc(data.error || "読み込みに失敗しました")}（${res.status}）</td></tr>`;
     return;
@@ -195,7 +300,7 @@ async function load() {
   }
   Object.assign(state, { leads: data.leads, statuses: data.statuses, sources: data.sources,
                          soonH: data.deadline_soon_hours, alertH: data.elapsed_alert_hours });
-  $("#updated").textContent = "最終更新 " + new Date().toLocaleTimeString("ja-JP");
+  $("#updated").textContent = "最終更新 " + new Date().toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo" });
   render();
 }
 
@@ -281,10 +386,16 @@ function render() {
 }
 
 async function post(id, body) {
+  if (DEMO.on) return saveDemoOverride(+id, body);
   await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: +id, ...body }) });
 }
 
 document.addEventListener("click", async (e) => {
+  if (e.target.id === "demo-reset") {
+    try { localStorage.removeItem(DEMO_KEY); } catch (err) {}
+    state.open.clear();
+    return load();
+  }
   const tile = e.target.closest("[data-tile]");
   if (tile) { state.tile = state.tile === tile.dataset.tile ? "" : tile.dataset.tile; return render(); }
   const save = e.target.closest("[data-save]");

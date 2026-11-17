@@ -10,7 +10,19 @@ python3 manage.py import 'samples/*.eml'     # .eml を取り込む（重複は 
 python3 manage.py serve --port 8000          # http://127.0.0.1:8000/ を開く
 ```
 
+### 静的デモ版（現在の Vercel 公開設定）
+
+データベースを使わず、架空のサンプル8件を表示するだけのデモです。
+`public/` の画面と `public/demo-data.json` だけを配信します（`.vercelignore` で他は除外）。
+
+- 画面は `/api/leads` が無いことを検出すると、自動でデモモードになります。
+- サンプルの日時は、閲覧した日時に合わせて日単位でずらして表示します（いちばん新しいサンプルが24時間以内に届いた扱い）。
+- ステータス・メモの変更は閲覧者のブラウザ（localStorage）にだけ保存されます。「デモを初期状態に戻す」で元に戻せます。
+- サンプルやパーサーを変えたら `python3 manage.py export-demo` で `public/demo-data.json` を作り直してコミットします。
+
 ### 本番公開（実メールの自動取り込み）
+
+`.vercelignore` の「静的デモ用」の行を削除したうえで、以下の手順で公開します。
 
 **GitHub + Vercel + Neon(PostgreSQL) + CloudMailin** で公開します。受信箱から CloudMailin のアドレスへ自動転送するだけなので、Gmail・Outlook・レンタルサーバーなど、どのメールアドレスでも使えます。
 手順は **[docs/SETUP.md](docs/SETUP.md)** を参照してください。
